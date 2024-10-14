@@ -1,0 +1,24 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Example</title>
+    </head>
+    <body>
+        <h2>Example</h2>
+        <p>
+            {{ data.message }}
+        </p>
+
+        <h3>Items</h3>
+        <p>
+            there are {{ data.get('items', [])|length }} items in the list
+        </p>
+        <ul>
+            {% for item in data.get('items', []) %}
+                <li>{{ item }}</li>
+            {% endfor %}
+        </ul>
+
+    </body>
+</html>

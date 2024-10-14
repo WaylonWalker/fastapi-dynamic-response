@@ -1,0 +1,19 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>404 {{ requested_path }} not found</title>
+    </head>
+    <body>
+        <h2>Page Not Found</h2>
+        <hr>
+        <h3>Suggestions</h3>
+        <p>
+            You're looking for {{ requested_path }}, but there's nothing here, here are some suggestions:
+        </p>
+
+        {% for suggestion in suggestions %}
+            <li><a href="{{ suggestion }}">{{ suggestion }}</a> </li>
+        {% endfor %}
+    </body>
+</html>

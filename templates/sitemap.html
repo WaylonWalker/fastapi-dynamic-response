@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>siemap</title>
+    </head>
+    <body>
+        <h1>Sitemap</h1>
+
+        {% for route in data.available_routes %}
+            <li><a href="{{ route }}">{{ route }}</a> </li>
+        {% endfor %}
+    </body>
+</html>
