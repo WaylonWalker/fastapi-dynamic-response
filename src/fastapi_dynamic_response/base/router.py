@@ -1,7 +1,9 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter
+from fastapi import Depends
+from fastapi import Request
+
 from fastapi_dynamic_response.base.schema import Message
 from fastapi_dynamic_response.dependencies import get_content_type
-
 
 router = APIRouter()
 

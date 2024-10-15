@@ -1,13 +1,11 @@
-<!DOCTYPE html>
-<html>
-    <head>
-        <title>siemap</title>
-    </head>
-    <body>
-        <h1>Sitemap</h1>
+{% extends "base.html" %}
 
-        {% for route in data.available_routes %}
-            <li><a href="{{ route }}">{{ route }}</a> </li>
-        {% endfor %}
-    </body>
-</html>
+{% block title %}Sitemap{% endblock %}
+
+{% block content %}
+    <h1>Sitemap</h1>
+
+    {% for route in data.available_routes %}
+        <li><a href="{{ route }}">{{ route }}</a> </li>
+    {% endfor %}
+{% endblock %}

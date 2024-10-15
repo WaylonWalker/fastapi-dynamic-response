@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Request
+
 from fastapi_dynamic_response import globals
 
 router = APIRouter()
@@ -36,7 +37,7 @@ async def healthz(request: Request):
     Returns 503 Service Unavailable if not healthy.
     """
     request.state.template_name = "status.html"
-    if is_ready:
+    if globals.is_ready:
         return {"status": "healthy"}
     else:
         raise HTTPException(status_code=503, detail="Unhealthy")

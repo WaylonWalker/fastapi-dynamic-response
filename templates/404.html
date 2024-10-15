@@ -1,19 +1,23 @@
-<!-- index.html -->
-<!DOCTYPE html>
-<html>
-    <head>
-        <title>404 {{ requested_path }} not found</title>
-    </head>
-    <body>
-        <h2>Page Not Found</h2>
-        <hr>
-        <h3>Suggestions</h3>
+{% extends "base.html" %}
+
+{% block title %}Page Not Found{% endblock %}
+
+{% block content %}
+    <h1>Page Not Found</h1>
+    <hr>
+    <h2>Suggestions</h2>
+    {% if suggestions %}
         <p>
             You're looking for {{ requested_path }}, but there's nothing here, here are some suggestions:
         </p>
+    {% else %}
+        <p>
+            You're looking for {{ requested_path }}, but there's nothing here.
+        </p>
+    {% endif %}
+    {% for suggestion in suggestions %}
+        <li><a href="{{ suggestion }}">{{ suggestion }}</a> </li>
+    {% endfor %}
 
-        {% for suggestion in suggestions %}
-            <li><a href="{{ suggestion }}">{{ suggestion }}</a> </li>
-        {% endfor %}
-    </body>
-</html>
+    <p> Try checking our <a href='/sitemap'>sitemap</a></p>
+{% endblock %}

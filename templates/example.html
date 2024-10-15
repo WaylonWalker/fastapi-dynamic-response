@@ -1,18 +1,14 @@
-<!-- index.html -->
-<!DOCTYPE html>
-<html>
-    <head>
-        <title>Example</title>
-    </head>
-    <body>
-        <h2>Example</h2>
-        <p>
-            {{ data.message }}
-        </p>
+{% extends "base.html" %}
 
-        <h3>Data</h3>
+{% block title %}Example{% endblock %}
 
-        {{ data.data }}
-    </body>
-</html>
+{% block content %}
+    <h2>Example</h2>
+    <p>
+        {{ data.message }}
+    </p>
 
+    <h3>Data</h3>
+
+    {{ data.data }}
+{% endblock %}
