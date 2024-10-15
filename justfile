@@ -7,23 +7,26 @@ venv:
 run:
   uv run -- uvicorn --reload --log-level debug src.fastapi_dynamic_response.main:app
 
+run-workers:
+  uv run -- uvicorn --workers 6 --log-level debug src.fastapi_dynamic_response.main:app
+
 get:
   http GET :8000/example
 
 get-plain:
-  http GET :8000/exa Content-Type=text/plain
+  http GET :8000/exa Content-Type:text/plain
 
 get-rtf:
-  http GET :8000/example Content-Type=application/rtf
+  http GET :8000/example Content-Type:application/rtf
 
 get-json:
-  http GET :8000 Content-Type=application/json
+  http GET :8000 Content-Type:application/json
 
 get-html:
-  http GET :8000 Content-Type=text/html
+  http GET :8000 Content-Type:text/html
 
 get-md:
-  http GET :8000 Content-Type=application/markdown
+  http GET :8000 Content-Type:application/markdown
 
 
 livez:

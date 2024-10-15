@@ -8,8 +8,10 @@ from fastapi_dynamic_response.dependencies import get_content_type
 from fastapi_dynamic_response.middleware import (
     Sitemap,
     catch_exceptions_middleware,
+    log_request_state,
     respond_based_on_content_type,
     set_prefers,
+    set_span_id,
 )
 from fastapi_dynamic_response.zpages.router import router as zpages_router
 
@@ -24,6 +26,8 @@ app = FastAPI(
     debug=True,
     dependencies=[
         Depends(set_prefers),
+        Depends(set_span_id),
+        Depends(log_request_state),
     ],
 )
 app.include_router(zpages_router)

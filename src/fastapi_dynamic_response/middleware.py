@@ -3,6 +3,7 @@ from io import BytesIO
 import json
 import traceback
 from typing import Any, Dict
+from uuid import uuid4
 
 from fastapi import Request, Response
 from fastapi.exceptions import (
@@ -17,10 +18,12 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from weasyprint import HTML as WEAZYHTML
 
+import base64
 from fastapi_dynamic_response.constant import ACCEPT_TYPES
 from fastapi_dynamic_response.globals import templates
+
+console = Console()
 
 
 class Prefers(BaseModel):
@@ -30,6 +33,8 @@ class Prefers(BaseModel):
     text: bool = False
     markdown: bool = False
     partial: bool = False
+    png: bool = False
+    pdf: bool = False
 
     @property
     def textlike(self) -> bool:
@@ -37,19 +42,50 @@ class Prefers(BaseModel):
 
     @model_validator(mode="after")
     def check_one_true(self) -> Dict[str, Any]:
-        format_flags = [self.JSON, self.html, self.rtf, self.text, self.markdown]
+        format_flags = [
+            self.JSON,
+            self.html,
+            self.rtf,
+            self.text,
+            self.markdown,
+            self.png,
+            self.pdf,
+        ]
         if format_flags.count(True) != 1:
             message = "Exactly one of JSON, html, rtf, text, or markdown must be True."
             raise ValueError(message)
+        return self
+
+
+def log_request_state(request: Request):
+    console.log(request.state.span_id)
+    console.log(request.url.path)
+    console.log(request.state.prefers)
+
+
+def set_span_id(request: Request):
+    span_id = uuid4()
+    request.state.span_id = span_id
 
 
 def set_prefers(
     request: Request,
 ):
     content_type = (
-        request.query_params.get("content_type")
-        or request.headers.get("content-type")
-        or request.headers.get("accept", None)
+        request.query_params.get(
+            "content-type",
+            request.query_params.get(
+                "content_type",
+                request.query_params.get("accept"),
+            ),
+        )
+        or request.headers.get(
+            "content-type",
+            request.headers.get(
+                "content_type",
+                request.headers.get("accept"),
+            ),
+        )
     ).lower()
     if content_type == "*/*":
         content_type = None
@@ -72,13 +108,9 @@ def set_prefers(
     # if content_type in ACCEPT_TYPES:
     for accept_type, accept_value in ACCEPT_TYPES.items():
         if accept_type in content_type:
-            request.state.prefers = Prefers(**{ACCEPT_TYPES[accept_value]: True})
-            print("content_type:", content_type)
-            print("prefers:", request.state.prefers)
+            request.state.prefers = Prefers(**{accept_value: True})
             return
     request.state.prefers = Prefers(JSON=True, partial=False)
-    print("prefers:", request.state.prefers)
-    print("content_type:", content_type)
 
 
 class Sitemap:
@@ -133,6 +165,41 @@ def get_screenshot(html_content: str) -> BytesIO:
     return buffer
 
 
+def get_pdf(html_content: str, scale: float = 1.0) -> BytesIO:
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--window-size=1280x1024")
+    chrome_options.add_argument("--disable-dev-shm-usage")  # Helps avoid memory issues
+
+    driver = webdriver.Chrome(options=chrome_options)
+    driver.get("data:text/html;charset=utf-8," + html_content)
+
+    # Generate PDF
+    pdf = driver.execute_cdp_cmd(
+        "Page.printToPDF",
+        {
+            "printBackground": True,  # Include CSS backgrounds in the PDF
+            "paperWidth": 8.27,  # A4 paper size width in inches
+            "paperHeight": 11.69,  # A4 paper size height in inches
+            "marginTop": 0,
+            "marginBottom": 0,
+            "marginLeft": 0,
+            "marginRight": 0,
+            "scale": scale,
+        },
+    )["data"]
+
+    driver.quit()
+
+    # Convert base64 PDF to BytesIO
+    pdf_buffer = BytesIO()
+    pdf_buffer.write(base64.b64decode(pdf))
+    pdf_buffer.seek(0)
+    return pdf_buffer.getvalue()
+
+
 def format_json_as_plain_text(data: dict) -> str:
     """Convert JSON to human-readable plain text format with indentation and bullet points."""
 
@@ -156,8 +223,8 @@ def format_json_as_plain_text(data: dict) -> str:
 def format_json_as_rich_text(data: dict, template_name: str) -> str:
     """Convert JSON to a human-readable rich text format using rich."""
 
-    console = Console()
     # pretty_data = Pretty(data, indent_guides=True)
+    console = Console()
 
     template = templates.get_template(template_name)
     html_content = template.render(data=data)
@@ -211,7 +278,7 @@ def handle_not_found(request: Request, call_next, data: str):
 
 async def respond_based_on_content_type(request: Request, call_next):
     requested_path = request.url.path
-    if requested_path in ["/docs", "/redoc", "/openapi.json"]:
+    if requested_path in ["/docs", "/redoc", "/openapi.json", "/static/app.css"]:
         return await call_next(request)
 
     try:
@@ -298,16 +365,21 @@ async def handle_response(request: Request, data: str):
         rich_text_content = format_json_as_rich_text(json_data, template_name)
         return PlainTextResponse(content=rich_text_content)
 
-    elif content_type == "image/png":
+    elif request.state.prefers.png:
         template = templates.get_template(template_name)
         html_content = template.render(data=json_data)
         screenshot = get_screenshot(html_content)
         return Response(content=screenshot.getvalue(), media_type="image/png")
 
-    elif content_type == "application/pdf":
+    elif request.state.prefers.pdf:
         template = templates.get_template(template_name)
         html_content = template.render(data=json_data)
-        pdf = WEAZYHTML(string=html_content).write_pdf()
+        scale = float(
+            request.headers.get("scale", request.query_params.get("scale", 1.0))
+        )
+        console.log(f"Scale: {scale}")
+        pdf = get_pdf(html_content, scale)
+
         return Response(content=pdf, media_type="application/pdf")
 
     return JSONResponse(content=json_data)
