@@ -1,4 +1,6 @@
 from difflib import get_close_matches
+
+from fastapi_dynamic_response.settings import settings
 from io import BytesIO
 import json
 import time
@@ -7,10 +9,6 @@ from typing import Any, Dict
 from uuid import uuid4
 
 from fastapi import Request, Response
-from fastapi.exceptions import (
-    HTTPException as StarletteHTTPException,
-    RequestValidationError,
-)
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 import html2text
 from pydantic import BaseModel, model_validator
@@ -79,8 +77,14 @@ async def add_process_time_header(request: Request, call_next):
     start_time = time.perf_counter()
     response = await call_next(request)
     process_time = time.perf_counter() - start_time
-    response.headers["X-Process-Time"] = str(process_time)
+    if str(response.status_code)[0] in "123":
+        response.headers["X-Process-Time"] = str(process_time)
     return response
+
+
+def set_bound_logger(request: Request, call_next):
+    request.state.bound_logger = logger.bind()
+    return call_next(request)
 
 
 async def set_span_id(request: Request, call_next):
@@ -90,8 +94,9 @@ async def set_span_id(request: Request, call_next):
 
     response = await call_next(request)
 
-    response.headers["x-request-id"] = str(span_id)
-    response.headers["x-span-id"] = str(span_id)
+    if str(response.status_code)[0] in "123":
+        response.headers["x-request-id"] = str(span_id)
+        response.headers["x-span-id"] = str(span_id)
     return response
 
 
@@ -121,7 +126,7 @@ def set_prefers(
     user_agent = request.headers.get("user-agent", "").lower()
     referer = request.headers.get("referer", "")
 
-    if "," in content_type:
+    if content_type and "," in content_type:
         content_type = content_type.split(",")[0]
 
     request.state.bound_logger.info(
@@ -308,19 +313,6 @@ def format_json_as_rich_text(data: dict, template_name: str) -> str:
     return capture.get()
 
 
-async def respond_based_on_content_type(
-    request: Request,
-    call_next,
-    content_type: str,
-    data: str,
-):
-    requested_path = request.url.path
-    if requested_path in ["/docs", "/redoc", "/openapi.json"]:
-        return await call_next(request)
-
-    return await call_next(request)
-
-
 def handle_not_found(request: Request, call_next, data: str):
     requested_path = request.url.path
     # available_routes = [route.path for route in app.router.routes if route.path]
@@ -353,59 +345,44 @@ async def respond_based_on_content_type(request: Request, call_next):
     try:
         response = await call_next(request)
 
-        user_agent = request.headers.get("user-agent", "").lower()
-        referer = request.headers.get("referer", "")
-        content_type = request.query_params.get(
-            "content_type",
-            request.headers.get("content-type", request.headers.get("Accept")),
-        )
-        # if "raw" in content_type:
-        #     return await call_next(request)
-        if content_type == "*/*":
-            content_type = None
-        if ("/docs" in referer or "/redoc" in referer) and content_type is None:
-            content_type = "application/json"
-        elif is_browser_request(user_agent) and content_type is None:
-            content_type = "text/html"
-        elif is_rtf_request(user_agent) and content_type is None:
-            content_type = "application/rtf"
-        elif content_type is None:
-            content_type = content_type or "application/json"
-
-        body = b"".join([chunk async for chunk in response.body_iterator])
-
-        data = body.decode("utf-8")
-
         if response.status_code == 404:
             request.state.bound_logger.info("404 not found")
-            return handle_not_found(
+            body = b"".join([chunk async for chunk in response.body_iterator])
+            data = body.decode("utf-8")
+            response = handle_not_found(
                 request=request,
                 call_next=call_next,
                 data=data,
             )
-        if str(response.status_code)[0] not in "123":
-            request.state.bound_logger.info("non-200 response")
+        elif str(response.status_code)[0] not in "123":
+            request.state.bound_logger.info(f"non-200 response {response.status_code}")
+            # return await handle_response(request, response, data)
             return response
+        else:
+            body = b"".join([chunk async for chunk in response.body_iterator])
+            data = body.decode("utf-8")
 
         return await handle_response(request, response, data)
-    # except TemplateNotFound:
-    #     return HTMLResponse(content="Template Not Found ", status_code=404)
-    except StarletteHTTPException as exc:
-        request.state.bound_logger.info("starlette exception")
-        return HTMLResponse(
-            content=f"Error {exc.status_code}: {exc.detail}",
-            status_code=exc.status_code,
-        )
-    except RequestValidationError as exc:
-        request.state.bound_logger.info("request validation error")
-        return JSONResponse(status_code=422, content={"detail": exc.errors()})
     except Exception as e:
         request.state.bound_logger.info("internal server error")
-        print(traceback.format_exc())
-        return HTMLResponse(content=f"Internal Server Error: {e!s}", status_code=500)
+        # print(traceback.format_exc())
+        raise e
+        if settings.ENV == "local":
+            return HTMLResponse(
+                content=f"Internal Server Error: {e!s} {traceback.format_exc()}",
+                status_code=500,
+            )
+        else:
+            return HTMLResponse(
+                content=f"Internal Server Error: {e!s}", status_code=500
+            )
 
 
-async def handle_response(request: Request, response: Response, data: str):
+async def handle_response(
+    request: Request,
+    response: Response,
+    data: str,
+):
     json_data = json.loads(data)
 
     template_name = getattr(request.state, "template_name", "default_template.html")
@@ -433,7 +410,7 @@ async def handle_response(request: Request, response: Response, data: str):
         template = templates.get_template(template_name)
         html_content = template.render(data=json_data)
         markdown_content = html2text.html2text(html_content)
-        return PlainTextResponse(content=markdown_content, headers=response.headers)
+        return PlainTextResponse(content=markdown_content)
 
     if request.state.prefers.text:
         request.state.bound_logger.info("returning plain text")
@@ -483,13 +460,11 @@ async def handle_response(request: Request, response: Response, data: str):
 # Initialize the logger
 async def log_requests(request: Request, call_next):
     # Log request details
+    request.state.bound_logger = logger.bind(
+        method=request.method, path=request.url.path
+    )
     request.state.bound_logger.info(
         "Request received",
-        # span_id=request.state.span_id,
-        method=request.method,
-        path=request.url.path,
-        # headers=dict(request.headers),
-        # prefers=request.state.prefers,
     )
     # logger.info(
     #     headers=dict(request.headers),

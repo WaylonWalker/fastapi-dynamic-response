@@ -3,15 +3,13 @@
 
 import logging
 
-from fastapi_dynamic_response.settings import Settings
+from fastapi_dynamic_response.settings import settings
 import structlog
 
 logger = structlog.get_logger()
 
 
-def configure_logging_two():
-    settings = Settings()
-
+def configure_logging():
     # Clear existing loggers
     logging.config.dictConfig(
         {
@@ -73,6 +71,3 @@ def configure_logging_two():
 
     logger.info("Logging configured")
     logger.info(f"Environment: {settings.ENV}")
-
-
-configure_logging = configure_logging_two
