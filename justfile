@@ -20,13 +20,13 @@ get-rtf:
   http GET :8000/example Content-Type:application/rtf
 
 get-json:
-  http GET :8000 Content-Type:application/json
+  http GET :8000/example Content-Type:application/json
 
 get-html:
-  http GET :8000 Content-Type:text/html
+  http GET :8000/example Content-Type:text/html
 
 get-md:
-  http GET :8000 Content-Type:application/markdown
+  http GET :8000/example Content-Type:application/markdown
 
 
 livez:
