@@ -1,6 +1,7 @@
 from difflib import get_close_matches
 from io import BytesIO
 import json
+import time
 import traceback
 from typing import Any, Dict
 from uuid import uuid4
@@ -23,6 +24,10 @@ import base64
 from fastapi_dynamic_response.constant import ACCEPT_TYPES
 from fastapi_dynamic_response.globals import templates
 
+import structlog
+
+logger = structlog.get_logger()
+
 console = Console()
 
 
@@ -35,6 +40,13 @@ class Prefers(BaseModel):
     partial: bool = False
     png: bool = False
     pdf: bool = False
+
+    def __repr__(self):
+        _repr = []
+        for key, value in self.dict().items():
+            if value:
+                _repr.append(key + "=True")
+        return f'Prefers({", ".join(_repr)})'
 
     @property
     def textlike(self) -> bool:
@@ -63,13 +75,29 @@ def log_request_state(request: Request):
     console.log(request.state.prefers)
 
 
-def set_span_id(request: Request):
+async def add_process_time_header(request: Request, call_next):
+    start_time = time.perf_counter()
+    response = await call_next(request)
+    process_time = time.perf_counter() - start_time
+    response.headers["X-Process-Time"] = str(process_time)
+    return response
+
+
+async def set_span_id(request: Request, call_next):
     span_id = uuid4()
     request.state.span_id = span_id
+    request.state.bound_logger = logger.bind(span_id=request.state.span_id)
+
+    response = await call_next(request)
+
+    response.headers["x-request-id"] = str(span_id)
+    response.headers["x-span-id"] = str(span_id)
+    return response
 
 
 def set_prefers(
     request: Request,
+    call_next,
 ):
     content_type = (
         request.query_params.get(
@@ -93,24 +121,31 @@ def set_prefers(
     user_agent = request.headers.get("user-agent", "").lower()
 
     if hx_request_header == "true":
-        request.state.prefers = Prefers(html=True, partial=True)
-        return
+        content_type = "text/html-partial"
+        # request.state.prefers = Prefers(html=True, partial=True)
+        # content_type = "text/html"
 
-    if is_browser_request(user_agent) and content_type is None:
+    elif is_browser_request(user_agent) and content_type is None:
         content_type = "text/html"
 
     elif is_rtf_request(user_agent) and content_type is None:
         content_type = "text/rtf"
 
-    elif content_type is None:
+    else:
         content_type = "application/json"
 
+    partial = "partial" in content_type
     # if content_type in ACCEPT_TYPES:
     for accept_type, accept_value in ACCEPT_TYPES.items():
         if accept_type in content_type:
-            request.state.prefers = Prefers(**{accept_value: True})
-            return
-    request.state.prefers = Prefers(JSON=True, partial=False)
+            request.state.prefers = Prefers(**{accept_value: True}, partial=partial)
+
+    request.state.content_type = content_type
+    request.state.bound_logger = request.state.bound_logger.bind(
+        # content_type=request.state.content_type,
+        prefers=request.state.prefers,
+    )
+    return call_next(request)
 
 
 class Sitemap:
@@ -318,7 +353,7 @@ async def respond_based_on_content_type(request: Request, call_next):
         if str(response.status_code)[0] not in "123":
             return response
 
-        return await handle_response(request, data)
+        return await handle_response(request, response, data)
     # except TemplateNotFound:
     #     return HTMLResponse(content="Template Not Found ", status_code=404)
     except StarletteHTTPException as exc:
@@ -333,45 +368,55 @@ async def respond_based_on_content_type(request: Request, call_next):
         return HTMLResponse(content=f"Internal Server Error: {e!s}", status_code=500)
 
 
-async def handle_response(request: Request, data: str):
+async def handle_response(request: Request, response: Response, data: str):
     json_data = json.loads(data)
 
     template_name = getattr(request.state, "template_name", "default_template.html")
     if request.state.prefers.partial:
         template_name = "partial_" + template_name
-    content_type = request.state.prefers
 
     if request.state.prefers.JSON:
-        return JSONResponse(content=json_data)
-
-    elif request.state.prefers.html:
-        return templates.TemplateResponse(
-            template_name, {"request": request, "data": json_data}
+        return JSONResponse(
+            content=json_data,
         )
 
-    elif request.state.prefers.markdown:
+    if request.state.prefers.html:
+        return templates.TemplateResponse(
+            template_name,
+            {"request": request, "data": json_data},
+            headers=response.headers,
+        )
+
+    if request.state.prefers.markdown:
         import html2text
 
         template = templates.get_template(template_name)
         html_content = template.render(data=json_data)
         markdown_content = html2text.html2text(html_content)
-        return PlainTextResponse(content=markdown_content)
+        return PlainTextResponse(content=markdown_content, headers=response.headers)
 
-    elif request.state.prefers.text:
+    if request.state.prefers.text:
         plain_text_content = format_json_as_plain_text(json_data)
-        return PlainTextResponse(content=plain_text_content)
+        return PlainTextResponse(
+            content=plain_text_content,
+        )
 
-    elif request.state.prefers.rtf:
+    if request.state.prefers.rtf:
         rich_text_content = format_json_as_rich_text(json_data, template_name)
-        return PlainTextResponse(content=rich_text_content)
+        return PlainTextResponse(
+            content=rich_text_content,
+        )
 
-    elif request.state.prefers.png:
+    if request.state.prefers.png:
         template = templates.get_template(template_name)
         html_content = template.render(data=json_data)
         screenshot = get_screenshot(html_content)
-        return Response(content=screenshot.getvalue(), media_type="image/png")
+        return Response(
+            content=screenshot.getvalue(),
+            media_type="image/png",
+        )
 
-    elif request.state.prefers.pdf:
+    if request.state.prefers.pdf:
         template = templates.get_template(template_name)
         html_content = template.render(data=json_data)
         scale = float(
@@ -380,6 +425,42 @@ async def handle_response(request: Request, data: str):
         console.log(f"Scale: {scale}")
         pdf = get_pdf(html_content, scale)
 
-        return Response(content=pdf, media_type="application/pdf")
+        return Response(
+            content=pdf,
+            media_type="application/pdf",
+        )
 
-    return JSONResponse(content=json_data)
+    return JSONResponse(
+        content=json_data,
+    )
+
+
+# Initialize the logger
+async def log_requests(request: Request, call_next):
+    # Log request details
+    request.state.bound_logger.info(
+        "Request received",
+        # span_id=request.state.span_id,
+        method=request.method,
+        path=request.url.path,
+        # headers=dict(request.headers),
+        # prefers=request.state.prefers,
+    )
+    # logger.info(
+    #     headers=dict(request.headers),
+    #     prefers=request.state.prefers,
+    # )
+
+    # Process the request
+    response = await call_next(request)
+
+    # Log response details
+    # logger.info(
+    #     "Response sent",
+    #     span_id=request.state.span_id,
+    #     method=request.method,
+    #     status_code=response.status_code,
+    #     headers=dict(response.headers),
+    # )
+
+    return response

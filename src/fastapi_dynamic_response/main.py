@@ -7,14 +7,19 @@ from fastapi_dynamic_response.base.router import router as base_router
 from fastapi_dynamic_response.dependencies import get_content_type
 from fastapi_dynamic_response.middleware import (
     Sitemap,
+    add_process_time_header,
     catch_exceptions_middleware,
-    log_request_state,
+    log_requests,
     respond_based_on_content_type,
     set_prefers,
     set_span_id,
 )
 from fastapi_dynamic_response.zpages.router import router as zpages_router
 
+from fastapi_dynamic_response.logging_config import configure_logging
+
+
+configure_logging()
 app = FastAPI(
     title="FastAPI Dynamic Response",
     version=__version__,
@@ -25,16 +30,23 @@ app = FastAPI(
     # exception_handlers=exception_handlers,
     debug=True,
     dependencies=[
-        Depends(set_prefers),
-        Depends(set_span_id),
-        Depends(log_request_state),
+        # Depends(set_prefers),
+        # Depends(set_span_id),
+        # Depends(log_request_state),
     ],
 )
+
+# configure_tracing(app)
+
 app.include_router(zpages_router)
 app.include_router(base_router)
-app.middleware("http")(Sitemap(app))
-app.middleware("http")(catch_exceptions_middleware)
 app.middleware("http")(respond_based_on_content_type)
+app.middleware("http")(add_process_time_header)
+app.middleware("http")(log_requests)
+app.middleware("http")(Sitemap(app))
+app.middleware("http")(set_prefers)
+app.middleware("http")(set_span_id)
+app.middleware("http")(catch_exceptions_middleware)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
