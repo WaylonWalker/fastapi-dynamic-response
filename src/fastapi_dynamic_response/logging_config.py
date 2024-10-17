@@ -1,51 +1,12 @@
 # logging_config.py
-import logging
-import structlog
-import sys
-
-from structlog.dev import ConsoleRenderer
-from structlog.processors import JSONRenderer
-
-from rich.traceback import install
-
-logger = structlog.get_logger()
-
-
-install(show_locals=True)
-
-
-def configure_logging_one(dev_mode: bool = True):
-    """Configure structlog based on the mode (dev or prod)."""
-    logging.basicConfig(
-        format="%(message)s",
-        stream=sys.stdout,
-        level=logging.DEBUG if dev_mode else logging.INFO,
-    )
-
-    structlog.configure(
-        processors=[
-            structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S"),  # Add timestamps
-            structlog.stdlib.add_log_level,  # Add log levels
-            structlog.processors.StackInfoRenderer(),  # Render stack info
-            structlog.processors.format_exc_info,  # Format exceptions
-            # structlog.dev.RichTracebackFormatter(),
-            ConsoleRenderer(
-                # exception_formatter=structlog.dev.rich_traceback
-            )
-            if dev_mode
-            else JSONRenderer(),  # Render logs nicely for dev
-        ],
-        context_class=dict,
-        logger_factory=structlog.stdlib.LoggerFactory(),
-        wrapper_class=structlog.stdlib.BoundLogger,
-        cache_logger_on_first_use=True,
-    )
 
 
 import logging
 
 from fastapi_dynamic_response.settings import Settings
 import structlog
+
+logger = structlog.get_logger()
 
 
 def configure_logging_two():
@@ -109,6 +70,9 @@ def configure_logging_two():
         logger = logging.getLogger(logger_name)
         logger.handlers = []
         logger.propagate = True
+
+    logger.info("Logging configured")
+    logger.info(f"Environment: {settings.ENV}")
 
 
 configure_logging = configure_logging_two
