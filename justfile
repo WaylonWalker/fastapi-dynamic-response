@@ -10,6 +10,12 @@ run:
 run-workers:
   uv run -- uvicorn --workers 6 --log-level debug src.fastapi_dynamic_response.main:app
 
+get-authorized:
+  http GET :8000/example 'Authorization:Basic user1:password123'
+
+get-admin:
+  http GET :8000/example 'Authorization:Basic user2:securepassword'
+
 get:
   http GET :8000/example
 

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, Request
 
+from fastapi_dynamic_response.auth import admin, authenticated, has_scope
 from fastapi_dynamic_response.base.schema import Message
 from fastapi_dynamic_response.dependencies import get_content_type
 
@@ -13,6 +14,36 @@ async def get_example(
 ):
     request.state.template_name = "example.html"
     return {"message": "Hello, this is an example", "data": [1, 2, 3, 4]}
+
+
+@router.get("/private")
+@authenticated
+async def get_private(
+    request: Request,
+    content_type: str = Depends(get_content_type),
+):
+    request.state.template_name = "example.html"
+    return {"message": "This page is private", "data": [1, 2, 3, 4]}
+
+
+@router.get("/admin")
+@admin
+async def get_admin(
+    request: Request,
+    content_type: str = Depends(get_content_type),
+):
+    request.state.template_name = "example.html"
+    return {"message": "This is only for admin users", "data": [1, 2, 3, 4]}
+
+
+@router.get("/superuser")
+@has_scope("superuser")
+async def get_superuser(
+    request: Request,
+    content_type: str = Depends(get_content_type),
+):
+    request.state.template_name = "example.html"
+    return {"message": "This is only for superusers", "data": [1, 2, 3, 4]}
 
 
 @router.get("/error")

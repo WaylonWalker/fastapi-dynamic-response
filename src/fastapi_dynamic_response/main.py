@@ -1,4 +1,4 @@
-from fastapi import Depends, FastAPI, Request
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from fastapi_dynamic_response import globals
@@ -52,8 +52,13 @@ app.middleware("http")(catch_exceptions_middleware)
 app.middleware("http")(set_bound_logger)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+from fastapi import Depends, Request
+from fastapi_dynamic_response.auth import BasicAuthBackend
+from starlette.middleware.authentication import AuthenticationMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 
-# Flag to indicate if the application is ready
+app.add_middleware(AuthenticationMiddleware, backend=BasicAuthBackend())
+app.add_middleware(SessionMiddleware, secret_key="your-secret-key")
 
 
 @app.on_event("startup")
