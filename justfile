@@ -1,9 +1,34 @@
+set dotenv-load
+
 default:
   @just --choose
 
+setup: kind-create argo-install
+
+teardown: kind-delete
+
+kind-create:
+    kind create cluster --name fastapi-dynamic-response
+
+kind-delete:
+    kind delete cluster --name fastapi-dynamic-response
+
+argo-install:
+    kubectl create namespace argocd
+    kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+    kubectl get pods -n argocd
+    kubectl apply -f argo
+
+compile:
+  uv pip compile pyproject.toml -o requirements.txt
 venv:
   uv venv
-
+build-podman:
+  podman build -t docker.io/waylonwalker/fastapi-dynamic-response:0.0.2 .
+run-podman:
+  podman run -it --rm -p 8000:8000 --name fastapi-dynamic-response docker.io/waylonwalker/fastapi-dynamic-response:0.0.2
+push-podman:
+  podman push docker.io/waylonwalker/fastapi-dynamic-response:0.0.2
 run:
   uv run -- uvicorn --reload --log-level debug src.fastapi_dynamic_response.main:app
 
