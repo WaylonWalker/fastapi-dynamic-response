@@ -3,12 +3,16 @@ set dotenv-load
 default:
   @just --choose
 
-setup: kind-create argo-install
+setup: kind-create
 
 teardown: kind-delete
 
+version:
+  echo ${VERSION}
+
 kind-create:
-    kind create cluster --name fastapi-dynamic-response
+    kind create cluster --name fastapi-dynamic-response --config kind-config.yaml
+    kind load docker-image --name fastapi-dynamic-response docker.io/waylonwalker/fastapi-dynamic-response:${VERSION}
 
 kind-delete:
     kind delete cluster --name fastapi-dynamic-response
@@ -24,16 +28,26 @@ compile:
 venv:
   uv venv
 build-podman:
-  podman build -t docker.io/waylonwalker/fastapi-dynamic-response:0.0.2 .
-run-podman:
-  podman run -it --rm -p 8000:8000 --name fastapi-dynamic-response docker.io/waylonwalker/fastapi-dynamic-response:0.0.2
-push-podman:
-  podman push docker.io/waylonwalker/fastapi-dynamic-response:0.0.2
-run:
-  uv run -- uvicorn --reload --log-level debug src.fastapi_dynamic_response.main:app
+  podman build -t docker.io/waylonwalker/fastapi-dynamic-response:${VERSION} .
 
+run:
+  @just -l | grep '^\s*run-' | gum filter --header 'Choose a command' | xargs -I {} just {}
+run-local:
+  uv run -- fdr_app app run
 run-workers:
   uv run -- uvicorn --workers 6 --log-level debug src.fastapi_dynamic_response.main:app
+run-podman:
+  podman run -it --rm -p 8000:8000 --name fastapi-dynamic-response docker.io/waylonwalker/fastapi-dynamic-response:${VERSION} app run
+run-podman-bash:
+  podman run -it --rm -p 8000:8000 --name fastapi-dynamic-response --entrypoint bash docker.io/waylonwalker/fastapi-dynamic-response:${VERSION}
+
+local-run:
+  uv run -- uvicorn --workers 6 --log-level debug src.fastapi_dynamic_response.main:app
+
+push-podman:
+  podman push docker.io/waylonwalker/fastapi-dynamic-response:${VERSION}
+  podman tag docker.io/waylonwalker/fastapi-dynamic-response:${VERSION} docker.io/waylonwalker/fastapi-dynamic-response:latest
+  podman push docker.io/waylonwalker/fastapi-dynamic-response:latest
 
 get-authorized:
   http GET :8000/example 'Authorization:Basic user1:password123'
