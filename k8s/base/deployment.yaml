@@ -10,6 +10,8 @@ metadata:
   name: fastapi-dynamic-response
   namespace: fastapi-dynamic-response
 spec:
+  selector:
+    app: fastapi-dynamic-response
   ports:
     - name: "8000"
       port: 8000
@@ -20,6 +22,12 @@ kind: Deployment
 metadata:
   name: fastapi-dynamic-response
   namespace: fastapi-dynamic-response
+  labels:
+    app: fastapi-dynamic-response
+    version: "0.0.3"
+    owner: "waylonwalker"
+  annotations:
+    email: "fastapi-dynamic-response@fastapi-dynamic-response.com"
 spec:
   replicas: 3
   selector:
@@ -35,17 +43,16 @@ spec:
       labels:
         app: fastapi-dynamic-response
     spec:
-      # affinity:
-      #   podAntiAffinity:
-      #     requiredDuringSchedulingIgnoredDuringExecution:
-      #       - labelSelector:
-      #           matchLabels:
-      #             app: fastapi-dynamic-response
-      #         topologyKey: "kubernetes.io/hostname"
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: fastapi-dynamic-response
+              topologyKey: "kubernetes.io/hostname"
       containers:
         - image: docker.io/waylonwalker/fastapi-dynamic-response:0.0.2
           name: fastapi-dynamic-response
-          args: ["./.venv/bin/uvicorn", "src.fastapi_dynamic_response.main:app", "--host", "0.0.0.0", "--port", "8000"]
           ports:
             - containerPort: 8000
               protocol: TCP
@@ -90,8 +97,9 @@ metadata:
   name: fastapi-dynamic-response
   namespace: fastapi-dynamic-response
 spec:
+  ingressClassName: nginx
   rules:
-    - host: app.fokais.com
+    - host: fastapi-dynamic-response.waylonwalker.com
       http:
         paths:
           - backend:

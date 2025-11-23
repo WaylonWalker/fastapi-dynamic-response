@@ -37,6 +37,7 @@ dependencies = [
     "rich>=13.9.2",
     "selenium>=4.25.0",
     "structlog>=24.4.0",
+    "typer>=0.12.5",
     "uvicorn>=0.31.1",
     "weasyprint>=61.2",
 ]
@@ -45,6 +46,9 @@ dependencies = [
 Documentation = "https://github.com/U.N. Owen/fastapi-dynamic-response#readme"
 Issues = "https://github.com/U.N. Owen/fastapi-dynamic-response/issues"
 Source = "https://github.com/U.N. Owen/fastapi-dynamic-response"
+
+[project.scripts]
+fdr_app = "fastapi_dynamic_response.cli.cli:app"
 
 [tool.hatch.version]
 path = "src/fastapi_dynamic_response/__about__.py"
